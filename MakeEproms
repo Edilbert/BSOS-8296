@@ -1,0 +1,2 @@
+cp e000.edit edit.2532
+cat c000.basic d000.basic b000.basic f000.kernal >bsos.27128

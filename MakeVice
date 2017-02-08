@@ -1,0 +1,26 @@
+# let PET point to your PET ROM directory e.g.:
+# PET=/Users/home/Vice/ROMS
+
+# Make sure to change all ROM and keyboard settings in the
+# Ressource Inspector of VICE at the same time!
+# Don't care, if the PET crashes during the changes, it is normal
+# if you change the ROM's of a running system :-)
+
+# Choose basic.new instead of basic4
+# Choose kernal.new instead of kernal4
+# Choose edit.new instead of edit4b80
+# Choose chargen.new instead of chargen.de
+# Choose osx_sym_de.vkm as virtual keyboard
+
+# Set the memory size of the PET to 128K
+# Set the I/O size to 256 byte
+
+# SAVE CURRENT SETTINGS
+
+# Quit VIVE and start it again.
+
+cat b000.basic c000.basic d000.basic >$PET/basic.new
+cp f000.kernal $PET/kernal.new
+cp e000.edit $PET/edit.new
+cp ascii.eprom $PET/chargen.new
+cp osx_sym_de.vkm $PET/osx_sym_de.vkm

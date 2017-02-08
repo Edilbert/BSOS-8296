@@ -1,0 +1,966 @@
+    BLACK SMURF MONITOR
+    ===================
+
+    Introduction
+
+The BLACK SMURF MONITOR (BSM) is a machine language monitor including
+a mini-assembler, a disassembler and bank switching access. The monitor
+is part of the BLACK SMURF OPERATING SYSTEM (BSOS).
+
+Machine language programs written using BSM can run by themselves
+or be used as very fast subroutines for BASIC programs since the
+BS MONITOR has the ability to coexist peacefully with BASIC.
+
+To enter the monitor from BASIC, type:
+
+MONITOR {return}
+
+        Summary of BSM Commands
+
+A  ASSEMBLE     Assembles a line of 6502 code.
+B  BANK         Set the bank register for read operations
+C  COMPARE      Compares two sections of memory and reports differences.
+D  DISASSEMBLE  Disassembles 6502 code.
+F  FILL         Fills a range of memory with the specified byte.
+G  GO           Starts execution at the specified address.
+H  HUNT         Hunts through memory for all occurrances of a set of bytes.
+L  LOAD         Loads a file from disk.
+M  MEMORY       Displays the hexadecimal values of memory locations.
+N  NEXT         Do a single step instruction and break after that
+R  REGISTERS    Displays the 6502 registers.
+S  SAVE         Saves to disk.
+U  USER DISK    Read (U1) or write (U2) disk blocks
+T  TRANSFER     Transfers data from one section of memory to another.
+W  WRITE BANK   Set the bank register for write operations
+X  EXIT         Exits BSM and returns to BASIC.
+
+.  (period)     Assembles a line of 6502 code (same as Assemble).
+:  (colon)      Modifies memory.
+;  (semicolon)  Modifies 6502 register displays.
+@  (at sign)    Displays disk status, sends disk command.
+/  (slash)      Loads a file from disk.
+#  (hash)       Displays or sets the default drive unit
+$  (dollar)     Displays the disk directory
+
+The Commodore 8296 has 128K builtin RAM, but only 96K are accessible without
+hardware modifications. 32K are permanently accessible in the address range
+$0000 - $7FFF. The other 64K are divided into 4 banks of 16K each, which
+can be accessed in the address range $8000 - $FFFF which is normally
+occupied by screen RAM, ROM and I/O.
+
+All monitor commands can be used to access any memory configuration.
+The monitor command "B" sets the configuration for read access, while the
+command "W" sets the configuration for write access. Example:
+You want to copy the contents of the ROM at $9000 to RAM BANK 0 at the same
+address:
+
+B 00
+W 80
+T 9000 9FFF 9000
+
+will do the task. To reset the configuration to normal use:
+
+B 00
+W 00
+
+
+    COMMODORE 8296 BANK SWITCHING
+    =============================
+
+    1. Easy bank switching
+
+    The easiest way to use the full 96 K RAM needs only 3 values to
+    be written alternatively into the configuration register $FFF0:
+
+    $00 : Normal (8032 compatible) configuration with 32K RAM, ROM and I/O
+    $80 : 64K RAM with upper 32K RAM replacing ROM, Screen and I/O
+    $8C : 64K RAM with upper 32K RAM replacing ROM, Screen and I/O
+
+
+    $0000                          $8000          $C000        $FFFF
+    +--------------------------------+--------------+--------------+
+$00 | Zero Page - Stack - 32K RAM    | Screen & ROM |  I/O & ROM   +
+    +--------------------------------+--------------+--------------+
+$80 | Zero Page - Stack - 32K RAM    | RAM Bank 0   | RAM Bank 2   +
+    +--------------------------------+--------------+--------------+
+$8C | Zero Page - Stack - 32K RAM    | RAM Bank 1   | RAM Bank 3   +
+    +--------------------------------+--------------+--------------+
+
+
+    2.  Advanced bank switching
+
+Control of the expansion memory is through a memory control
+register located at address $FFF0. The memory control
+register provides selection of 16k-byte blocks, write
+protection, enabling the expansion memory, I/O peek through
+and screen peek through. Because the memory control register
+is write only, a copy of the register should be kept in the
+lower 32k of main memory (the BS MONITOR does this, that's why
+you should use "B" and "W" and do not write directly to $FFF0).
+
+        Address $FFF0
+        ---------------------------------------------------
+         7      6      5      4      3      2      1      0
+        ---------------------------------------------------
+         |      |      |      |                    |      |
+         |      |      |      |                    |      |
+Enable --+      |      |      |                    |      +-- Write Protect
+                |      |      |                    |          $8000 - $BFFF
+                |      |      |                    |
+I/O peek through+      |      |      Select        +--------- Write Protect
+$E800-$EFFF            |      |       16K                     $C000 - $FFFF
+                       |      |      Block:  0 0:  2 and 0
+Screen peek through ---+      |              0 1:  2 and 1
+$8000-$8FFF                   |              1 0:  3 and 0
+                              |              1 1:  3 and 1
+Reserved ---------------------+
+
+
+
+0   +----------------+ 0000
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+16K +----------------+ 4000
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+    |                |
+32K +----------------+ 8000 ............. +--------------+ +--------------+
+    |     Screen     |                    |              | |              |
+    +----------------+ 9000               |              | |              |
+    |   Option ROM   |                    | BLOCK 0      | | BLOCK 1      |
+    +----------------+ A000               | 16K          | | 16K          |
+    |   Option ROM   |                    |              | |              |
+    +----------------+ B000               |              | |              |
+    |    BASIC ROM   |                    |              | |              |
+48K +----------------+ C000 ............. +--------------+ +--------------+
+    |    BASIC ROM   |                    |              | |              |
+    +----------------+ D000               |              | |              |
+    |    BASIC ROM   |                    | BLOCK 2      | | BLOCK 3      |
+58K +----------------+ E000               | 16K          | | 16K          |
+    +     Edit ROM   | E800-E8FF: I/O     |              | |              |
+60K +----------------+ F000               |              | |              |
+    |   Kernal ROM   |                    |              | |              |
+64K +----------------+ FFFF               +--------------+ +--------------+
+
+
+
+
+
+        Summary for Monitor Field Descriptors
+        =====================================
+
+The following designators precede monitor data fields (e.g. memory
+dumps). When encountered as a command, these designators instruct the
+monitor to alter memory or register contents using the given data.
+
+.  {period}       precedes lines of disassembled code
+:  {colon}        precedes lines of memory dump
+;  {semicolon}    precedes line of a register dump
+
+The following designators precede number fields (e.g. addresses) and
+specify the radix (number base) of the value. Entered as commands, these
+designators instruct the monitor simply to display the given value in
+each of the four radices.
+
+   {null}         (default) precedes hexadecimal values.
+$  {dollar}       precedes hexadecimal (base-16) values
+
+The following characters are used by the monitor as field delimiters or
+line terminators (unless encountered within an ASCII string).
+
+   {space}        delimiter  seperates two fields
+
+
+      BS MONITOR Command descriptions
+      ===============================
+
+*Note:*
+< > enclose required parameters
+[ ] enclose optional parameters
+
+
+  *****   *****
+  * A *   * . *
+  *****   *****
+
+PURPOSE:
+
+    Enter a line of assembly code
+
+SYNTAX:
+
+    A     <address> <opcode mnemonic> [operand]
+    .     <address> <opcode mnemonic> [operand]
+
+    <address>
+    A 4-digit hexadecimal number indicating the address to place the code.
+
+    <opcode mnemonic>
+    A standard MOS technology assembly language mnemonic, e.g. LDA, STX, ROR.
+
+    <operand>
+    The operand, when required, can be any of the legal addressing modes.
+    Constant values in the operand must bei either a 8-bit value in the
+    form $nn, or a 16-bit value in the form $nnnn. The leading $ sign
+    is mandatory, the number of digits must be only 2 or 4! The operand
+    'A' for accumulator immediate addressing has to be omitted.
+
+    A {return} is used to indicate the end of the assembly line. If there
+    are any errors on the line, a question mark is displayed to indicate an
+    error, and the cursor moves to the next line. The screen editor can be
+    used to correct the error(s) on that line.
+
+EXAMPLE:
+
+    A 1200 LDX #$00
+    A 1202
+
+*NOTE:* A period (.) is equal to the ASSEMBLE command.
+
+EXAMPLE:
+
+    .2000 LDA #$23
+
+
+
+  *****
+  * B *
+  *****
+
+PURPOSE:
+
+    Set the memory configuration for monitor read access.
+
+SYNTAX:
+
+    B     <byte>
+
+    <byte>
+    A 2-digit hexadecimal number indicating the value for the
+    C-8296 memory configuration register ($FFF0).
+
+EXAMPLE:
+
+B 80
+
+Choose 64K RAM configuration with bank 0 on $8000 and bank 2 on $C000.
+
+    This value is written temporaryly to the memory configuration register
+    while the monitor reads from memory (bank fetch). The code for
+    bank fetching is:
+
+; **********
+  Bank_Fetch
+; **********
+
+ LDA R_Bank         ; shown as RB in the register command
+ SEI                ; disable interrupts: I/O and ROM may be not accessible
+ STA $FFF0          ; reconfigure memory
+ LDA (STAL),Y       ; get byte from desired bank and address
+ PHA                ; save it
+ LDA #0             ; value for normal configuration
+ STA $FFF0          ; restore normal configuration
+ CLI                ; enable interrupts
+ PLA                ; pull read byte from stack
+ RTS                ; return
+
+
+
+  *****
+  * C *
+  *****
+
+PURPOSE:
+
+    Compare two areas of memory
+
+SYNTAX:
+
+    C     <address1> <address 2> <address 3>
+
+    <address 1>
+    A number indicating the start address of memory to compare against.
+
+    <address 2>
+    A number indicating the end address of memory to compare against.
+
+    <address 3>
+    A number indicating the start address of the other memory to compare with.
+
+    Addresses that do not agree are printed on the screen.
+
+    The command may be used to compare between different memory banks,
+    the address1 and address2 are used with the bank register RB, while
+    address3 is used with the bank register WB.
+
+
+
+  *****
+  * D *
+  *****
+
+PURPOSE:
+
+    Disassemble machine code into assembly language mnemonics and operands.
+
+SYNTAX:
+
+    D    [<address 1>] [<address 2>]
+
+    <address 1>
+    A number setting the address to start the disassembly.
+
+    <address 2>
+    An optional ending address of code to be disassembled.
+
+    The format of the disassembly differs slightly from the input format of
+    an assembly. The difference is that the first character of a disassembly
+    is a period rather than an A (for readability), and the hexadecimal code
+    is listed as well.
+
+    A disassembly listing can be modified using the screen editor. Make any
+    changes to the mnemonic or operand on the screen, then hit the carriage
+    return. This enters the line and calls the assembler for further
+    modifications.
+
+    A disassembly can be paged. Typing a D{return} causes the next 10 lines
+    disassembly to be displayed.
+
+EXAMPLE:
+
+D C003 C00E
+. C003 A9 8B    LDA #$8B
+. C005 A0 00    LDY #$00
+. C007 78       SEI
+. C008 20 D8 CC JSR $CCD8
+. C00B 58       CLI
+. C00C 84 5F    STY $5F
+. C00E 60       RTS
+
+
+
+  *****
+  * F *
+  *****
+
+PURPOSE:
+
+    Fill a range of locations with a specified byte.
+
+SYNTAX:
+
+    F   <address 1> <address 2> <byte>
+
+    <address 1>
+    The first location to fill with the <byte>.
+
+    <address 2>
+    The last location to fill with the <byte>.
+
+    <byte>
+    Number to be written.
+
+    This command is useful for initializing data structures or any other RAM
+    area. The content of the WB configuration is used to select the bank for filling.
+
+EXAMPLE:
+
+W 00
+F 0400 0518 EA
+
+Select standard memory configuration with W 00.
+Fill memory locations from $0400 to $0518 with $EA (a NOP instruction).
+
+
+
+  *****
+  * G *
+  *****
+
+PURPOSE:
+
+    Begin execution of a program at a specified address.
+
+SYNTAX:
+
+    G     [<address>]
+
+    <address>
+    An address where execution is to start. When address is left out,
+    execution begins at the current PC. (The current PC can be viewed using
+    the R command.)
+
+    The GO command restores all registers (displayable by using the R
+    command) and begins execution at the specified starting address. Caution
+    is recommended in using the GO command. To return to BLACK SMURF
+    MONITOR mode after executing a machine language program, use the BRK
+    instruction at the end of the program.
+
+    The G command can only start in standard memory configuration.
+
+EXAMPLE:
+
+G 2000
+
+Execution begins at location $2000
+
+
+
+  *****
+  * H *
+  *****
+
+PURPOSE:
+
+    Hunt through memory for all occurrences of a set of bytes.
+
+SYNTAX:
+
+    H     <address 1> <address 2> <data>
+
+    <address 1>
+    Beginning address of hunt procedure.
+
+    <address 2>
+    Ending address of hunt procedure.
+
+    <data>
+    Data set to search for data may be hex numbers or an ASCII string.
+
+EXAMPLES:
+
+H A000 A101 A9 FF 4C
+
+Search for data $A9, $FF, $4C, from $A000 to $A101.
+
+H 2000 9800 "ERROR"
+
+Search for the alpha string "ERROR".
+
+
+
+  *****   *****
+  * L *   * / *
+  *****   *****
+
+PURPOSE:
+
+    Load a file from disk.
+
+SYNTAX:
+
+    L     <"file name"> [,<device> ]
+
+    <"file name">
+    Any legal Commodore 128 file name (max. 16 character).
+
+    <device>
+    A hexadecimal number indicating the device to load from, e.g.
+    08,09,0A and 0B for devices 8,9,10 and 11.
+
+    The LOAD command causes a file to be loaded into memory.
+    The file will be loaded to the address in bank 0 that is specified
+    in the first two bytes of a disk file.
+
+EXAMPLE:
+
+L "PROGRAM",09
+
+Loads the file named PROGRAM from the disk device 9.
+
+
+
+  *****
+  * M *
+  *****
+
+PURPOSE:
+
+    To display memory as a hexadecimal and ASCII dump within the specified
+    address range.
+
+SYNTAX:
+
+    M     [<address 1> [<address 2>]]
+
+    <address 1>
+    First address of memory dump. Optional. If omitted, 10 lines are
+    displayed.
+
+    <address 2>
+    Last address of memory dump. Optional. If omitted, 10 lines
+
+Memory is displayed in the following format:
+
+:B0B0 B5 C0 45 4E C4 46 4F D2  4E 45 58 D4 44 41 54 C1 5@ENDFOR NEXTDATA
+
+Memory content may be edited using the screen editor. Move the cursor to
+the data to be modified, type the desired correction and hit {return}.
+If there is a bad RAM location or an attempt to modify ROM has occurred,
+an error flag (?) is displayed.
+
+The memory display uses the "RB" memory configuration
+Editing a memory line, writes the contents to the "WB" memoryconfiguration.
+If these are different, the memory display may flip back to the original
+values after hitting {return} because it displays the read bank, not
+the write bank.
+
+An ASCII dump of the data is displayed to the right of the hex data. When a
+character is not printable, it is displayed as a reverse period (.).
+
+As with the disassembly command, paging down is accomplished by typing M
+and {return}.
+
+EXAMPLE:
+
+M B0B0 B0BF
+:B0B0 B5 C0 45 4E C4 46 4F D2  4E 45 58 D4 44 41 54 C1 5@ENDFOR NEXTDATA
+
+
+
+  *****
+  * N *
+  *****
+
+PURPOSE:
+
+    N allows to run the code in single steps.
+    N has no arguments.
+    The command works similar to G.
+    All registers are loaded from the values shown by "R".
+    The instruction at the PC is executed.
+    The program is immediately stopped after the instruction by another break.
+    This allows the single step execution in RAM and in ROM,
+    but not in code sequences, which disable the interrupt with SEI.
+
+SYNTAX:
+
+    N
+
+The values of PC, SR, AC, XR, YR and SP are transfered back to the 6502
+before the command is executed.
+
+EXAMPLE:
+
+N
+  PC  IRQ  SR AC XR YR SP RB WB SV-BDIZC
+;B401 FD89 20 12 00 00 FA 00 00 00100000
+.B401 A0 B3    LDY #$B3
+
+The instruction shown after the register display is the instruction
+to be executed at a following "N" command.
+
+The contents of the program counter PC may be edited before
+a "N" command for single stepping on another address.
+
+
+  *****
+  * R *
+  *****
+
+PURPOSE:
+
+    Show  6502 registers and other important information:
+    The program status register (SR), the program counter (PC),
+    the accumulator (AC), the X (XR) and Y (YR) index registers
+    and the stack pointer (SP) are displayed.
+    Additionally the content of the IRQ vector address (IRQ), the
+    memory configuration for monitor read access (RB) and the
+    memory configuration for monitor write access (WB).
+
+SYNTAX:
+
+    R
+
+The values of PC, SR, AC, XR, YR and SP are transfered back to the 6502
+before the Go command is executed.
+
+EXAMPLE:
+
+R
+  PC  IRQ  SR AC XR YR SP RB WB SV-BDIZC
+;B3FF E455 00 01 02 03 F8 00 00 00100000
+
+The flags of the status register SR are shown at the end of the line:
+
+S Sign
+V Overflow
+- unused
+B Break
+D Decimal
+I Interrupt
+Z Zero
+C Carry
+
+Editing the status register is only possible via SR,
+editing the individual flags will have no effect.
+
+*NOTE:* ; {semicolon} can be used to modify these values in the
+same fashion as : (colon) can be used to modify memory registers.
+
+
+
+  *****
+  * S *
+  *****
+
+PURPOSE:
+
+    Save an area of memory to disk.
+
+SYNTAX:
+
+    S     <"file name">, <device>, <address 1>, <address 2>
+
+    <"file name">
+    Any legal Commodore 128 file name. To save the data the name must be
+    enclosed in double quotes. Single quotes cannot be used.
+
+    <device>
+    A hexadecimal number indicating on which device the file is to be
+    placed. Typical values are 08,09,0A and 0B.
+
+    <address 1>
+    Starting address of memory to be saved.
+
+    <address 2>
+    Ending address of memory to be saved + 1. All data up to, but not
+    including the byte of data at this address, is saved.
+
+    The file may be recalled, using the L command.
+
+EXAMPLE:
+
+S "GAME",8,0400,0C00
+
+Saves memory from $0400 to $0C00 onto disk.
+
+
+
+  *****
+  * T *
+  *****
+
+PURPOSE:
+
+    Transfer data from one memory area to another.
+
+SYNTAX:
+
+    T     <address 1> <address 2> <address 3>
+
+    <address 1>
+    Starting address of data to be moved.
+
+    <address 2>
+    Ending address of data to be moved.
+
+    <address 3>
+    Starting address of of new location where data will be moved.
+
+    Data can be moved from low memory to high memory and vice versa.
+    Additional memory segments of any length can be moved forward or
+    backward. The memory configuration RB is used for reading and
+    WB for writing. Thus it is possible to transfer (copy) data
+    between different memory banks or ROM to RAM for instance.
+
+EXAMPLE:
+
+T 1400 1600 1401
+
+Shifts data from $1400 up to and including $1600 one byte higher in memory.
+
+B 00
+W 80
+T 9000 9FFF 9000
+
+Copy the contents of an option ROM at $9000 (if there) to RAM Bank 0
+at the sane address.
+
+
+
+  *****
+  * U *
+  *****
+
+PURPOSE:
+
+    Transfer data between disk and memory
+
+SYNTAX:
+
+    U1 <address> <drive> <track> <sector>
+    U2 <address> <drive> <track> <sector>
+
+
+    <address>
+    Starting address of data to be moved.
+
+    <drive>
+    disk drive (typically 0 or 1)
+
+    <track>
+    decimal track number (e.g. 1 - 154 for CBM 8250)
+
+    <sector>
+    decimal sector number
+
+    Data can be moved from disk to memory and vice versa.
+    The amount is always 1 block = 256 byte.
+    U1 reads data from disk to memory
+    U2 writes data from memory to disk
+
+    These commands may be used to edit any disk information, even
+    directory entries and BAM, so be careful!
+
+    The default unit 8 may be changed with the '#' command (see there).
+
+
+EXAMPLE:
+
+U1 1000 0 18 1
+
+Read 1st. directory block of a 1541/4040/2031 disk to $1000-$10ff
+
+U2 2000 1 40 10
+
+Write data from $2000-$20ff to drive 1 track 40 sector 10
+
+
+  *****
+  * W *
+  *****
+
+PURPOSE:
+
+    Set the memory configuration for monitor write access.
+
+SYNTAX:
+
+    W     <byte>
+
+    <byte>
+    A 2-digit hexadecimal number indicating the value for the
+    C-8296 memory configuration register ($FFF0).
+
+EXAMPLE:
+
+W 8C
+
+Choose 64K RAM configuration with bank 1 on $8000 and bank 3 on $C000.
+
+    This value is written temporaryly to the memory configuration register
+    while the monitor writes to memory (bank store). The code for
+    bank storing is:
+
+; **********
+  Bank_Store
+; **********
+
+ PHA                ; save byte to be stored
+ LDA W_Bank         ; shown as WB in the register command
+ SEI                ; disable interrupts: I/O and ROM may be not accessible
+ STA $FFF0          ; reconfigure memory
+ PLA                ; pull byte back from stack
+ STA (BPTR),Y       ; store byte to desired bank and address
+ PHA                ; save it again
+ LDA #0             ; value for normal configuration
+ STA $FFF0          ; restore normal configuration
+ CLI                ; enable interrupts
+ PLA                ; restore accumulator content
+ RTS                ; return
+
+
+
+  *****
+  * X *
+  *****
+
+PURPOSE:
+
+    Exit to BASIC.
+
+SYNTAX:
+    X
+
+
+
+  *****
+  * : *
+  *****
+
+PURPOSE:
+
+    Can be used to set up 16 memory locations.
+
+SYNTAX:
+
+    :     <address> <data byte 0 ... 15>
+
+    <address>
+    First memory address to set.
+
+    <data byte 0 ... 15>
+    Data to be placed in successive memory locations following the address,
+    with at least ones pace preceding each data byte.
+
+EXAMPLES:
+
+M 2000 2000
+
+Displays line of bytes following $2000.
+
+:2000 31 32 38 4E C4 46 4F D2  4E 45 58 D4 44 41 54 C1
+
+Enters values at $2000 to $200F
+
+
+
+  *****
+  * ; *
+  *****
+
+PURPOSE:
+
+    Can be used to modify the display of the 6502 registers and other
+    important system and monitor values.
+
+SYNTAX:
+
+    ;     <PC> <IRQ> <SR> <AC> <XR> <YR> <SP> <RB> <WB>
+
+    <PC>
+    A 4 digit hexadecimal number setting the 6502 Program Counter.
+
+    <IRQ>
+    A 4 digit hexadecimal number setting the IRQ vector.
+
+    <SR>
+    A 2-digit hexadecimal number, setting the 6502 Status Register.
+
+    <AC>
+    A 2-digit hexadecimal number, setting the 6502 Accumulator.
+
+    <XR>
+    A 2-digit hexadecimal number, setting the 6502 X index Register.
+
+    <YR>
+    A 2-digit hexadecimal number, setting the 6502 Y index Register.
+
+    <SP>
+    A 2-digit hexadecimal number, setting the 6502 Stack Pointer.
+
+    <RB>
+    A 2-digit hex number, setting the configuration for monitor reads.
+
+    <WB>
+    A 2-digit hex number, setting the configuration for monitor writes.
+
+It is easier to use the R command, because the register labels are
+listed above the line containing the register values.
+
+All values except RB and WB are transfered to the 6502 or memory locations
+before the Go command is executed.
+
+
+
+  *****
+  * @ *
+  *****
+
+PURPOSE:
+
+    Can be used to display the disk status or send a disk command.
+
+SYNTAX:
+
+    @     [<cmd string>]
+
+    <cmd string>
+    String command to disk.
+
+    NOTE: @ alone gives the status of the default disk unit.
+
+EXAMPLES:
+
+@
+00, OK, 00, 00
+
+Checks disk status.
+
+@I0
+
+Initializes unit 8, drive 0 (if drive 8 was the default drive).
+
+
+
+  *****
+  * # *
+  *****
+
+PURPOSE:
+
+    Set the default unit for "@" and "/" commands.
+
+SYNTAX:
+
+    #     [<disk unit>]
+
+    <disk unitg>
+    Typically a value between 08 and 0B (8 - 11)
+
+    NOTE: # alone gives the current value for the default disk unit.
+
+EXAMPLES:
+
+# 08
+# 0A
+
+
+
+  *****
+  * $ *
+  *****
+
+PURPOSE:
+
+    Display directory of the deafult disk unit.
+
+SYNTAX:
+
+    $     [<drive>:][<file pattern>]
+
+    <drive:>
+    drive number (0 for single disk drives)
+
+    <file pattern>
+    pattern to filter listing using wild letters '*' and '?'.
+
+    NOTE: $ alone gives the directories of both drives of dual disk drives.
+
+EXAMPLES:
+
+$0
+ 0 "test disk       " 00 2a
+ 1    "c-8296 wedge"     prg
+11    "performance test" prg
+652 blocks free.
+
+$0:p*
+ 0 "test disk       " 00 2a
+11    "performance test" prg
+652 blocks free.
+
+
+
