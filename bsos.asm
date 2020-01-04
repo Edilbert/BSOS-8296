@@ -14,6 +14,11 @@
 
 BSOS_KBD = 1
 
+; revision 1.11 04-Jan-2020
+; -------------------------
+; enhance DELETE commnd
+; implement OLD command
+
 ; revision 1.10 09-Oct-2015
 ; -------------------------
 ; optimize garbage collection
@@ -3503,6 +3508,7 @@ InSt_50   JMP READ_10
           .WORD Find_Text        - 1
           .WORD Replace          - 1
           .WORD Merge            - 1
+          .WORD OLD              - 1
 
 ; **********************
   Extended_Keyword_Table
@@ -3514,6 +3520,7 @@ InSt_50   JMP READ_10
           .BYTE "FIND"^
           .BYTE "REPLACE"^
           .BYTE "MERGE"^
+          .BYTE "OLD"^
           .BYTE 0
 
           .FILL $bf8c-* (0)
@@ -8776,18 +8783,18 @@ DGB_20    JMP Get_Byte_Value
           STA RENINC+1
           STA RENNEW+1
           JSR CHRGOT
-          BCS Renu_08         ; no arguments
+          BCS Renu_15         ; no arguments
           JSR Scan_Linenumber
           LDA LINNUM
           STA RENNEW          ; start low
           ORA LINNUM+1
-          BNE Renu_01
+          BNE Renu_10
 Renu_Err  JMP Jump_To_Illegal_Quantity
-Renu_01   LDA LINNUM+1
+Renu_10   LDA LINNUM+1
           STA RENNEW+1        ; start high
           JSR CHRGOT
           CMP #','
-          BNE Renu_08
+          BNE Renu_15
           JSR CHRGET
           JSR Scan_Linenumber
           LDA LINNUM
@@ -8798,7 +8805,7 @@ Renu_01   LDA LINNUM+1
           STA RENINC+1        ; inc high
           JSR CHRGOT
           CMP #','
-          BNE Renu_08
+          BNE Renu_15
           JSR CHRGET
           JSR Scan_Linenumber ; get old start
           JSR Find_Power_Line ; find start line
@@ -8810,21 +8817,21 @@ Renu_01   LDA LINNUM+1
           SBC RENNEW+1
           BCS Renu_Err        ; New line # would be less than previous
           JSR Reset_BPTR
-          BNE Renu_09         ; always
+          BNE Renu_20         ; always
 
 ; phase 1: build table of old and new numbers
 
-Renu_08   JSR Reset_Renumber_Pointer
-Renu_09   JSR Install_Bank_Access
+Renu_15   JSR Reset_Renumber_Pointer
+Renu_20   JSR Install_Bank_Access
           LDA #$80
           STA R_Bank
           STA W_Bank
 
 ; start of new line numbers
 
-Renu_10   LDY #1
+Renu_25   LDY #1
           LDA (TMPPTC),Y      ; link high
-          BEQ Renu_50         ; finished
+          BEQ Renu_30         ; finished
           INY                 ; Y = 2
 
 ; next table entry
@@ -8861,15 +8868,15 @@ Renu_10   LDY #1
 ; next basic line
 
           JSR Update_Link
-          BNE Renu_10         ; branch if link is not zero
+          BNE Renu_25         ; branch if link is not zero
 
 ; table finished
 
-Renu_50   LDY #3
+Renu_30   LDY #3
           LDA #$ff            ; end marker
-Renu_60   JSR Bank_Store
+Renu_35   JSR Bank_Store
           DEY
-          BPL Renu_60
+          BPL Renu_35
 
 ; phase 2: build a renumbered copy in bank 2
 
@@ -8879,13 +8886,13 @@ Renu_60   JSR Bank_Store
 
 ; copy link - will be recalculated at end
 
-Renu_70   LDY #0
+Renu_40   LDY #0
           LDA (TMPPTC),Y      ; link low
           JSR Bank_Store
           INY
           LDA (TMPPTC),Y      ; link high
           JSR Bank_Store
-          BEQ Renu_85         ; finished
+          BEQ Renu_45         ; finished
 
 ; exchange line number from table or copy if not found
 
@@ -8908,12 +8915,12 @@ Renu_70   LDY #0
           JSR Update_Link
           LDA BPTR+1
           CMP #$fb
-          BCC Renu_70
+          BCC Renu_40
           JMP Error_Out_Of_Memory
 
 ; copy new program from bank 2 to BASIC memory
 
-Renu_85   LDA #$8c            ; bank 1
+Renu_45   LDA #$8c            ; bank 1
           STA R_Bank
           CLC
           LDA BPTR
@@ -8928,20 +8935,20 @@ Renu_85   LDA #$8c            ; bank 1
           STA STAL+1
           JSR Reset_Renumber_Pointer
           LDY #0
-Renu_90   JSR Bank_Fetch
+Renu_50   JSR Bank_Fetch
           STA (TMPPTC),Y
           CPY RENNEW
-          BNE Renu_92
+          BNE Renu_55
           CPX STAL+1
-          BEQ Renu_94
-Renu_92   INY
-          BNE Renu_90
+          BEQ Renu_60
+Renu_55   INY
+          BNE Renu_50
           INC TMPPTC+1
           INC STAL+1
-          BNE Renu_90
-Renu_94   STY VARTAB
-          LDA TMPPTC+1
-Renu_99   STA VARTAB+1        ; also used from Delete routine
+          BNE Renu_50
+Renu_60   LDA TMPPTC+1
+Renu_90   STY VARTAB          ; entry for Delete routine
+          STA VARTAB+1
           JSR Reset_BASIC_Execution
           JSR Rechain
           JMP Basic_Ready
@@ -9751,10 +9758,8 @@ IRQ_END   PLA
 ; ******
 
           JSR CHRGOT
-          BCS DelErr          ; no arguments
-          JSR Scan_Linenumber
+          JSR Scan_Linenumber ; start #
           JSR Find_BASIC_Line
-          BCC DelErr
           LDA TMPPTC
           STA RENINC
           LDA TMPPTC+1
@@ -9763,31 +9768,29 @@ IRQ_END   PLA
           CMP #'-'
           BNE DelErr
           JSR CHRGET
-          JSR Scan_Linenumber
-          JSR Find_BASIC_Line
-          BCC DelErr
+          JSR Scan_Linenumber ; end #
+          LDA LINNUM
+          ORA LINNUM+1
+          BNE Del_10
+          DEC LINNUM+1        ; end number = $ff00
+Del_10    JSR Find_BASIC_Line
+          BCC Del_20          ; -> not found
           JSR Update_Link     ; First line after DELETE range
-          DEY                 ; Y = 0
-Del_10    LDA (TMPPTC),Y
-          STA (RENINC),Y
-          INC RENINC
-          BNE Del_20
-          INC RENINC+1
-Del_20    LDX TMPPTC
-          INX
-          STX TMPPTC
+Del_20    LDX VARTAB+1
+          LDY #0              ; Y = 0
+Del_30    LDA (TMPPTC),Y      ; copy upper part of program
+          STA (RENINC),Y      ; into area to delete
+          INY
           BNE Del_30
+          INC RENINC+1
           INC TMPPTC+1
-Del_30    CPX VARTAB
-          BNE Del_10
-          LDA TMPPTC+1
-          CMP VARTAB+1
-          BNE Del_10
-          LDA RENINC
-          STA VARTAB
+          CPX TMPPTC+1        ; reached VARTAB ?
+          BCS Del_30
+          LDY RENINC
           LDA RENINC+1
-          JMP Renu_99
+          JMP Renu_90         ; set VARTAB, reset BASIC
 DelErr    JMP Jump_To_Illegal_Quantity
+          .SIZE
 
 ; ***************
   Get_Record_Size
@@ -10135,6 +10138,24 @@ BEEP_Ret  RTS
           .BYTE  34           ;  7: Vertical Sync position          !!!
           .BYTE   0           ;  8: Interlace and Skew
           .BYTE   7           ;  9: Maximum Raster Address          !!!
+
+
+; ***
+  OLD
+; ***
+          LDA #1
+          TAY
+          STA (TXTTAB),Y      ; non zero link
+          DEY
+          STA (TXTTAB),Y
+          JSR Rechain         ; restore all links
+          CLC
+          LDA INDEXA
+          ADC #2
+          TAY
+          LDA INDEXA+1
+          ADC #0
+          JMP Renu_90         ; set VARTAB and reset BASIC
 
           .FILL $e74e-* (0)
 

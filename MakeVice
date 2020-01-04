@@ -17,7 +17,9 @@
 
 # SAVE CURRENT SETTINGS
 
-# Quit VIVE and start it again.
+# Quit VICE and start it again.
+
+PET=/Users/home/Vice_Settings
 
 cat b000.basic c000.basic d000.basic >$PET/basic.new
 cp f000.kernal $PET/kernal.new
