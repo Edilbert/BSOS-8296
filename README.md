@@ -120,14 +120,15 @@ New BASIC commands
 DELETE from-to         ; Deletes a line range
 FIND /text/            ; Lists all BASIC Lines containing 'text" token mode
 FIND "text"            ; Lists all BASIC lines containing 'text' text mode
-REPLACE !find!replace! ; Do a search & replace in token mode (any delimiter)
-REPLACE "find"replace" ; Do a search & replace in text mode (" delimiter)
+MERGE "filename",unit  ; Loads and merges a program from disk to memory
 MONITOR                ; Calls BSM instead of breaking to it with SYS 1024
-MERGE "filename",unit  ; Loads a program and merges it to an existing
+OLD                    ; Undo NEW command
 RENUMBER new,inc,old   ; Renumbers a BASIC program
    The default values for new,inc,old are: 10,10,first line
    RENUMBER 1000,10  renumbers the whole program to linenumbers
       1000,1010,1020 etc.
+REPLACE !find!replace! ; Do a search & replace in token mode (any delimiter)
+REPLACE "find"replace" ; Do a search & replace in text mode (" delimiter)
 ```
 
 Enhanced BASIC commands
