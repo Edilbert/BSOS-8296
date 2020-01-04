@@ -4,7 +4,7 @@
 
 ; Use the Bit Shift Assembler "bsa" for assembly of this source
 
-.STORE $E000, $1000, "ascii.eprom"
+.STORE $E000, $1000, "ascii.2532"
 
 * = $e000
 
