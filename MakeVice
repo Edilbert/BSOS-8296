@@ -24,5 +24,5 @@ PET=/Users/home/Vice_Settings
 cat b000.basic c000.basic d000.basic >$PET/basic.new
 cp f000.kernal $PET/kernal.new
 cp e000.edit $PET/edit.new
-cp ascii.eprom $PET/chargen.new
+cp ascii.2532 $PET/chargen.new
 cp osx_sym_de.vkm $PET/osx_sym_de.vkm

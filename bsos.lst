@@ -14,7 +14,7 @@ b000          * = $b000   ; *** b000 ***  Commodore 8296
 
 0001          BSOS_KBD = 1
 
-              ; revision 1.11 04-Jan-2020
+              ; revision 1.11 08-Jan-2020
               ; -------------------------
               ; enhance DELETE commnd
               ; implement OLD command
@@ -656,7 +656,7 @@ b000          * = $b000   ; *** b000 ***  Commodore 8296
 
               ; Flag indicating reverse mode for screen output
 
-009f          ReverseFlag  = $9f  ; 0 = normal   $80 = reverse
+009f          ReverseFlag  = $9f  ; 0 = normal   non zero = reverse
 
               ; IEEE-488 output: deferred character flag
 
@@ -821,7 +821,7 @@ b000          * = $b000   ; *** b000 ***  Commodore 8296
               ; may be exited by printing a closing quote or by hitting the RETURN or
               ; SHIFT-RETURN or ESC keys.
 
-00cd          QTSW   = $cd        ; quote switch
+00cd          QTSW   = $cd        ; quote switch non zero:inside quotes
 
 00ce          BITTS  = $ce        ; unused (transmitter byte buffer)
 00cf          EOT    = $cf        ; unused (end of tape)
@@ -9156,7 +9156,7 @@ e12d 85 d9    ECS_05    STA DATAX           ; save it in DATAX
 e12f 29 3f              AND #$3f            ; lower case, symbols and digits
 e131 06 d9              ASL DATAX           ; reverse bit 7 -> carry
 e133 24 d9              BIT DATAX           ; uppercase or graphics ?
-e135 10 02              BPL ECS_10          ; branch if no´t
+e135 10 02              BPL ECS_10          ; branch if not
 e137 09 80              ORA #$80            ; convert upper case to PETSCII
 e139 90 04    ECS_10    BCC ECS_20          ; branch if not reversed
 e13b a6 cd              LDX QTSW            ; quote mode ?
@@ -9164,43 +9164,43 @@ e13d d0 04              BNE ECS_30          ; no conversion in quote mode
 e13f 70 02    ECS_20    BVS ECS_30          ; no conversion for graphics
 e141 09 40              ORA #$40            ; display code to PETSCII
 e143 e6 c6    ECS_30    INC CursorCol       ; advance cursor
-e145 20 68 e1           JSR Edit_Quote_Toggle
+e145 20 64 e1           JSR Edit_Quote_Toggle
 e148 c4 a1              CPY LastInputCol    ; at end of input ?
-e14a 90 13              BCC ECS_70          ; return if not
+e14a 90 0f              BCC ECS_50          ; return if not
 e14c a9 00    ECS_40    LDA #0
 e14e 85 ac              STA CRSW            ; switch input to keyboard
 e150 a9 0d              LDA #CR             ; load CR
 e152 a2 03              LDX #3              ; screen channel
-e154 e4 af              CPX DFLTN           ; input = screen ?
-e156 f0 04              BEQ ECS_50          ; peform CR on screen input
-e158 e4 b0              CPX DFLTO           ; output = screen ?
-e15a f0 03              BEQ ECS_70          ; don't echo CR
-e15c 20 02 e2 ECS_50    JSR EDIT_CHROUT
-e15f 85 d9    ECS_70    STA DATAX           ; save character in DATAX
-e161 68                 PLA
-e162 aa                 TAX                 ; restore X
-e163 68                 PLA
-e164 a8                 TAY                 ; restore Y
-e165 a5 d9              LDA DATAX
-e167 60       ECS_Ret   RTS ;Size   71 [Edit_CHRIN_Screen]
+e154 e4 b0              CPX DFLTO           ; output = screen ?
+e156 f0 03              BEQ ECS_50          ; don't echo CR
+e158 20 02 e2           JSR EDIT_CHROUT
+e15b 85 d9    ECS_50    STA DATAX           ; save character in DATAX
+e15d 68                 PLA
+e15e aa                 TAX                 ; restore X
+e15f 68                 PLA
+e160 a8                 TAY                 ; restore Y
+e161 a5 d9              LDA DATAX
+e163 60       ECS_Ret   RTS ;Size   67 [Edit_CHRIN_Screen]
 
               ; *****************
-e168            Edit_Quote_Toggle
+e164            Edit_Quote_Toggle
               ; *****************
 
-e168 c9 22              CMP #QUOTE
-e16a d0 06              BNE EQT_Ret
-e16c e5 cd              SBC QTSW
-e16e 85 cd              STA QTSW
-e170 a9 22              LDA #QUOTE
-e172 60       EQT_Ret   RTS ;Size   11 [Edit_Quote_Toggle]
+e164 c9 22              CMP #QUOTE
+e166 d0 06              BNE EQT_Ret
+e168 e5 cd              SBC QTSW
+e16a 85 cd              STA QTSW
+e16c a9 22              LDA #QUOTE
+e16e 60       EQT_Ret   RTS ;Size   11 [Edit_Quote_Toggle]
 
               ; *****************
-e173            Edit_Display_Char
+e16f            Edit_Display_Char
               ; *****************
 
-e173 05 9f              ORA ReverseFlag  ;  3
-e175 a6 dc              LDX INSRT        ;  3  ; # of inserts outstanding
+e16f a6 9f              LDX ReverseFlag
+e171 f0 02              BEQ EDC_10
+e173 09 80              ORA #$80
+e175 a6 dc    EDC_10    LDX INSRT        ;  3  ; # of inserts outstanding
 e177 f0 02              BEQ EDC_20       ;  3
 e179 c6 dc              DEC INSRT
 e17b 91 c4    EDC_20    STA (ScrPtr),Y   ;  6
@@ -9270,8 +9270,8 @@ e1bb            Edit_Full_Screen
               ; ****************
 
 e1bb a9 00              LDA #0
-e1bd aa                 TAX
-e1be 20 ca e1           JSR EDIT_TOP_LEFT
+e1bd 85 e0              STA TopMargin
+e1bf 85 e2              STA LefMargin
 e1c1 a5 df              LDA ScreenRows      ; bottom margin
 e1c3 a2 4f              LDX #79             ; right  margin
 
@@ -9400,8 +9400,8 @@ e266 4c 8d e1 CO_Exit   JMP Edit_Chrout_Epilog
               ; Dispatch area for Edit_CHROUT_Standard
 
 e269 29 3f    CO_Normal AND #$3f               ;  2 ; PETSCII -> display code
-e26b 20 68 e1           JSR Edit_Quote_Toggle  ; 17
-e26e 4c 73 e1           JMP Edit_Display_Char  ;  3 = 22 [total 57]
+e26b 20 64 e1           JSR Edit_Quote_Toggle  ; 17
+e26e 4c 6f e1           JMP Edit_Display_Char  ;  3 = 22 [total 57]
 
 e271 c4 d5    CO_Right  CPY RigMargin
 e273 e6 c6              INC CursorCol
@@ -9430,7 +9430,7 @@ e297 20 ca e9 CO_Switch JSR Edit_Switch_Char_ROM
 e29a d0 ca              BNE CO_Exit         ; always
 
 e29c 09 80    CO_Rev    ORA #$80
-e29e 4c 73 e1           JMP Edit_Display_Char
+e29e 4c 6f e1           JMP Edit_Display_Char
 
 e2a1 a6 d8    CO_Top    LDX CursorRow
 e2a3 86 e0              STX TopMargin
@@ -9554,10 +9554,10 @@ e363 4c dc e2 CS_Size   JMP Edit_Screen_30
 e366 a9 74    CS_Pi     LDA #$74
 e368 2c                 .BYTE $2c
 e369 09 40    CS_Print  ORA #$40            ; PETSCII to display
-e36b 4c 73 e1           JMP Edit_Display_Char
+e36b 4c 6f e1           JMP Edit_Display_Char
 
 e36e 09 c0    CS_Rev    ORA #$c0            ; reverse upper case
-e370 4c 73 e1           JMP Edit_Display_Char
+e370 4c 6f e1           JMP Edit_Display_Char
 
 e373 a9 00    CS_RVS    LDA #0
 e375 85 9f              STA ReverseFlag
@@ -14254,7 +14254,7 @@ INDEXB                         $0021   356D  1523   1530   1542   1549y
                                       6087y  6092y  6097y  6101y  6107
 QUOTE                          $0022   245D  1937   1946   2316   2905
                                       3010   3377   4609   4629   7530
-                                      7534   8529   8636   9191   9195
+                                      7534   8529   8636   9189   9193
                                      11087  11093  11319  11342  13800
 FAC3M1                         $0023   364D  5523   5526   5625   5666
                                       5668   5669   5876
@@ -14584,7 +14584,7 @@ VERCK                          $009d   651D  7522   7542   7567   8308
 CharsInBuffer                  $009e   655D  9067   9069   9079   9096
                                      10346  10353  11865  12012  12892
                                      13325
-ReverseFlag                    $009f   659D  9202   9415   9563   9664
+ReverseFlag                    $009f   659D  9200   9415   9563   9664
 C3PO                           $00a0   663D 11664  11670  11795  11797
 LastInputCol                   $00a1   665D  9112   9120   9168  11885
 InputRow                       $00a3   666D  9115   9637  11879
@@ -14605,9 +14605,9 @@ Target_Unit                    $00ad   746D 11387  11436  11494  11528
                                      11602
 LDTND                          $00ae   753D  7987   8116  11914  11943
                                      11989  11990  11992  12345  12350
-DFLTN                          $00af   757D  9174  11863  11874  11924
-                                     11936  12753
-DFLTO                          $00b0   761D  9176   9977  11900  11920
+DFLTN                          $00af   757D 11863  11874  11924  11936
+                                     12753
+DFLTO                          $00b0   761D  9174   9977  11900  11920
                                      11934  12793
 DOS_FC                         $00b1   771D 11355  11416  11486  11514
 DOS_EOF                        $00b2   772D 11481  11517
@@ -14667,7 +14667,7 @@ EAL                            $00c9   801D  6357   6358   6365   6367
 Mon_Tmp                        $00cb   803D  7447   7450   7656   7661
                                      13682  13713
 Mon_ZP                         $00cc   804D 13278  13280  13701
-QTSW                           $00cd   824D  9114   9162   9193   9194
+QTSW                           $00cd   824D  9114   9162   9191   9192
                                       9368   9519   9665  10584
 BITTS                          $00ce   826
 EOT                            $00cf   827
@@ -14704,8 +14704,8 @@ CursorRow                      $00d8   837D  9005   9018   9116   9240
                                       9595   9623   9638   9643  10488
                                      10501  10512  10522  10541  10564
                                      11878
-DATAX                          $00d9   838D  9155   9157   9158   9179
-                                      9184   9341   9356
+DATAX                          $00d9   838D  9155   9157   9158   9177
+                                      9182   9341   9356
 FNADR                          $00da   839D  6347   6349   7505   7507
                                       7536y  8232   8234   8449   8451
                                       9819y 11326  11328  11331y 11335y
@@ -14718,15 +14718,16 @@ INSRT                          $00dc   840D  9203   9205   9364   9500
 ROPRTY                         $00dd   841
 FSBLK                          $00de   842
 ScreenRows                     $00df   843D  9046   9275  10000
-TopMargin                      $00e0   844D  8993   9004   9239   9290
-                                      9436   9454   9457   9592   9621
-                                      9624   9627   9687   9700  10463
-                                     10474  10542  10550  10553  10556
+TopMargin                      $00e0   844D  8993   9004   9239   9273
+                                      9290   9436   9454   9457   9592
+                                      9621   9624   9627   9687   9700
+                                     10463  10474  10542  10550  10553
+                                     10556
 BotMargin                      $00e1   845D  8996   9282   9573   9639
                                       9685   9702  10462  10475  10492
 LefMargin                      $00e2   846D  9011   9218   9238   9263
-                                      9291   9316   9437   9580   9608
-                                      9654  10074  10443
+                                      9274   9291   9316   9437   9580
+                                      9608   9654  10074  10443
 XMAX                           $00e3   847D  9975  10347
 LSTX                           $00e4   848D 10318  10323  10340
 KOUNT                          $00e5   849D  9997  10329  10335
@@ -15929,12 +15930,12 @@ ECS_10                         $e139  9161D  9159
 ECS_20                         $e13f  9164D  9161
 ECS_30                         $e143  9166D  9154   9163   9164
 ECS_40                         $e14c  9170D  9122
-ECS_50                         $e15c  9178D  9175
-ECS_70                         $e15f  9179D  9169   9177
-ECS_Ret                        $e167  9185
-Edit_Quote_Toggle              $e168  9188D  9167   9403
-EQT_Ret                        $e172  9196D  9192
-Edit_Display_Char              $e173  9199D  9404   9433   9557   9560
+ECS_50                         $e15b  9177D  9169   9175
+ECS_Ret                        $e163  9183
+Edit_Quote_Toggle              $e164  9186D  9167   9403
+EQT_Ret                        $e16e  9194D  9190
+Edit_Display_Char              $e16f  9197D  9404   9433   9557   9560
+EDC_10                         $e175  9203D  9201
 EDC_20                         $e17b  9206D  9204
 Edit_Chrout_Epilog_Return      $e186  9214D  9409
 EDC_30                         $e18b  9219D  9211
@@ -15947,7 +15948,7 @@ EETE_10                        $e1ac  9253D  9256
 Edit_To_Left_Margin            $e1b4  9260D  9113  13297
 Edit_Full_Screen               $e1bb  9269D  9463   9476  10001
 EDIT_BOTTOM_RIGHT              $e1c5  9279D  8979
-EDIT_TOP_LEFT                  $e1ca  9287D  8978   9274
+EDIT_TOP_LEFT                  $e1ca  9287D  8978
 CO_Shift                       $e1cf  9294D  9357
 CO_Tab                         $e1d2  9297D  9305   9385
 CO_Size                        $e1e2  9310D  9393
@@ -15957,7 +15958,7 @@ EdDC_10                        $e1ed  9320D  9326
 EDIT_CHROUT                    $e202  9337D  7137   7147   7196   7228
                                       7302   7310   7338   7607   7609
                                       7885   7890   7901   8338   8347
-                                      8965   9078   9178  11776  11904
+                                      8965   9078   9176  11776  11904
                                      12066  12174  13191  13299  13308
 Edit_CHROUT_Standard           $e20c  9350D 10011  10012
 CO_Exit                        $e266  9398D  9306   9318   9330   9408
@@ -16965,18 +16966,19 @@ MEMUSS                         $00fd   864D  7365   7367   7398   7399
                                       8660   9858   9865   9867  13432
                                      13487  13489  13491  13493  13495
                                      13497
+TopMargin                      $00e0   844D  8993   9004   9239   9273
+                                      9290   9436   9454   9457   9592
+                                      9621   9624   9627   9687   9700
+                                     10463  10474  10542  10550  10553
+                                     10556
 CursorRow                      $00d8   837D  9005   9018   9116   9240
                                       9243   9435   9456   9572   9593
                                       9595   9623   9638   9643  10488
                                      10501  10512  10522  10541  10564
                                      11878
-TopMargin                      $00e0   844D  8993   9004   9239   9290
-                                      9436   9454   9457   9592   9621
-                                      9624   9627   9687   9700  10463
-                                     10474  10542  10550  10553  10556
 QUOTE                          $0022   245D  1937   1946   2316   2905
                                       3010   3377   4609   4629   7530
-                                      7534   8529   8636   9191   9195
+                                      7534   8529   8636   9189   9193
                                      11087  11093  11319  11342  13800
 INDEXB                         $0021   356D  1523   1530   1542   1549y
                                       1553   3128   5178   5183   5185y
@@ -17013,15 +17015,15 @@ VARPTR                         $0044   455D  4069   4070   4354   4357
 FAC2EX                         $0066   524D  3335   3758   3759   5325
                                       5326   5363   5365   5711   5719
                                       5979   5998   6653   6728   6731
+LefMargin                      $00e2   846D  9011   9218   9238   9263
+                                      9274   9291   9316   9437   9580
+                                      9608   9654  10074  10443
 Mon_Lo                         $00c2   791D 13137  13222  13226  13243
                                      13675  13679  13680  13689  13690
                                      13704  13718  13723  13780
 CHARAC                         $0003   255D  2304   2308   2309   3004
                                       3009   3013   3713   3722   4610
                                       4625   6172   6667   6724
-LefMargin                      $00e2   846D  9011   9218   9238   9263
-                                      9291   9316   9437   9580   9608
-                                      9654  10074  10443
 DOS_RL                         $00b9   783D  9808   9812   9814  11409
                                      11424  11447  11459  11483  11488
                                      11500  11519  11593
@@ -17086,7 +17088,7 @@ INPPTR                         $0040   439D  2960   2961   2972   2973
                                       3043   3044   3079   3080   3085
 OLDTXT                         $003a   419D  1838   2058   2059   2158
                                       2159   2178   2181   2849   2850
-QTSW                           $00cd   824D  9114   9162   9193   9194
+QTSW                           $00cd   824D  9114   9162   9191   9192
                                       9368   9519   9665  10584
 Mon_Hi                         $00c3   792D 13132  13219  13244  13676
                                      13685  13700  13720  13725
@@ -17106,8 +17108,8 @@ MEMSIZ                         $0034   401D  1806   1807   4739   4742
                                       7053   7054   7060   7064
 INSRT                          $00dc   840D  9203   9205   9364   9500
                                       9503   9523   9663
-DATAX                          $00d9   838D  9155   9157   9158   9179
-                                      9184   9341   9356
+DATAX                          $00d9   838D  9155   9157   9158   9177
+                                      9182   9341   9356
 Mon_Op                         $00c1   790D 12411  12440  13242  13263
                                      13276  13290  13293
 Dis_Line                       $00ba   784D  7354   7356   7358   7396
@@ -17134,16 +17136,16 @@ Dis_Length                     $00be   787D 12417  12427  12485  13121
                                      13129  13289
 PC_Adjust                      $00b3   773D  7103   7115   7131   7341
                                      12400  12402
-DFLTO                          $00b0   761D  9176   9977  11900  11920
+DFLTO                          $00b0   761D  9174   9977  11900  11920
                                      11934  12793
-DFLTN                          $00af   757D  9174  11863  11874  11924
-                                     11936  12753
 YSAVE                          $0048   466D  2970   2971   3045   3046
                                       3251   3330
 TANSGN                         $000c   311D  3333   3802   6883   6885
                                       6903   6913
 DIMFLG                         $0006   264D  3831   4134   4173   4217
                                       4251   4302
+DFLTN                          $00af   757D 11863  11874  11924  11936
+                                     12753
 Target_Unit                    $00ad   746D 11387  11436  11494  11528
                                      11602
 CRSW                           $00ac   744D  9105   9142   9171   9354
@@ -17163,7 +17165,7 @@ DOS_FC                         $00b1   771D 11355  11416  11486  11514
 BLNON                          $00aa   734D  9083   9086   9741   9744
 LastInputCol                   $00a1   665D  9112   9120   9168  11885
 C3PO                           $00a0   663D 11664  11670  11795  11797
-ReverseFlag                    $009f   659D  9202   9415   9563   9664
+ReverseFlag                    $009f   659D  9200   9415   9563   9664
 CBINV                          $0092   594D  9726  13588  13590  13658
 RNDX                           $0088   569D  6824   6825   6848   6849
 BITS                           $0065   520D  4827   4833   4834   6130
@@ -17614,6 +17616,11 @@ MEMUSS                         $00fd   864D  7365   7367   7398   7399
                                       8660   9858   9865   9867  13432
                                      13487  13489  13491  13493  13495
                                      13497
+TopMargin                      $00e0   844D  8993   9004   9239   9273
+                                      9290   9436   9454   9457   9592
+                                      9621   9624   9627   9687   9700
+                                     10463  10474  10542  10550  10553
+                                     10556
 CursorRow                      $00d8   837D  9005   9018   9116   9240
                                       9243   9435   9456   9572   9593
                                       9595   9623   9638   9643  10488
@@ -17627,13 +17634,9 @@ Bank_Fetch                     $027a   881D   880   7176   7189   7449
                                       8938  10974  10980  10984  10987
                                      11003  12439  13292  13451  13453
                                      13456  13457  13478  13507  13558
-TopMargin                      $00e0   844D  8993   9004   9239   9290
-                                      9436   9454   9457   9592   9621
-                                      9624   9627   9687   9700  10463
-                                     10474  10542  10550  10553  10556
 QUOTE                          $0022   245D  1937   1946   2316   2905
                                       3010   3377   4609   4629   7530
-                                      7534   8529   8636   9191   9195
+                                      7534   8529   8636   9189   9193
                                      11087  11093  11319  11342  13800
 INDEXB                         $0021   356D  1523   1530   1542   1549y
                                       1553   3128   5178   5183   5185y
@@ -17673,6 +17676,9 @@ FAC2EX                         $0066   524D  3335   3758   3759   5325
 KEYD                           $026f   870D  9062   9064   9065   9098
                                      10352  12894  13311  13313  13316
                                      13317  13320  13321  13323
+LefMargin                      $00e2   846D  9011   9218   9238   9263
+                                      9274   9291   9316   9437   9580
+                                      9608   9654  10074  10443
 Mon_Lo                         $00c2   791D 13137  13222  13226  13243
                                      13675  13679  13680  13689  13690
                                      13704  13718  13723  13780
@@ -17682,9 +17688,6 @@ CHARAC                         $0003   255D  2304   2308   2309   3004
 Ass_Buf                        $02c1   886D 13207  13211  13214  13251
                                      13259  13273  13694  13737  13740
                                      13744  13745  13762
-LefMargin                      $00e2   846D  9011   9218   9238   9263
-                                      9291   9316   9437   9580   9608
-                                      9654  10074  10443
 DOS_RL                         $00b9   783D  9808   9812   9814  11409
                                      11424  11447  11459  11483  11488
                                      11500  11519  11593
@@ -17755,7 +17758,7 @@ DOS_Status                     $03ad   916D  3567   3568   3643   8055
                                       8062   8064   8345   9805
 Dis_Buf                        $02b1   884D 12693  13124  13142  13146
                                      13175  13180  13190  13274
-QTSW                           $00cd   824D  9114   9162   9193   9194
+QTSW                           $00cd   824D  9114   9162   9191   9192
                                       9368   9519   9665  10584
 Mon_Hi                         $00c3   792D 13132  13219  13244  13676
                                      13685  13700  13720  13725
@@ -17779,8 +17782,8 @@ DOS_Attr                       $033d   898D  8422   8458   8463   8500
                                       8558   8584   8599
 INSRT                          $00dc   840D  9203   9205   9364   9500
                                       9503   9523   9663
-DATAX                          $00d9   838D  9155   9157   9158   9179
-                                      9184   9341   9356
+DATAX                          $00d9   838D  9155   9157   9158   9177
+                                      9182   9341   9356
 Mon_Op                         $00c1   790D 12411  12440  13242  13263
                                      13276  13290  13293
 Dis_Line                       $00ba   784D  7354   7356   7358   7396
@@ -17811,10 +17814,8 @@ Dis_Length                     $00be   787D 12417  12427  12485  13121
                                      13129  13289
 PC_Adjust                      $00b3   773D  7103   7115   7131   7341
                                      12400  12402
-DFLTO                          $00b0   761D  9176   9977  11900  11920
+DFLTO                          $00b0   761D  9174   9977  11900  11920
                                      11934  12793
-DFLTN                          $00af   757D  9174  11863  11874  11924
-                                     11936  12753
 YSAVE                          $0048   466D  2970   2971   3045   3046
                                       3251   3330
 TANSGN                         $000c   311D  3333   3802   6883   6885
@@ -17829,6 +17830,8 @@ SAT                            $0265   869D  7990  11961  11997  11998
                                      12356
 FAT                            $025b   868D  8119  11963  11995  11996
                                      12358
+DFLTN                          $00af   757D 11863  11874  11924  11936
+                                     12753
 Target_Unit                    $00ad   746D 11387  11436  11494  11528
                                      11602
 CRSW                           $00ac   744D  9105   9142   9171   9354
@@ -17851,7 +17854,7 @@ DOS_FC                         $00b1   771D 11355  11416  11486  11514
 BLNON                          $00aa   734D  9083   9086   9741   9744
 LastInputCol                   $00a1   665D  9112   9120   9168  11885
 C3PO                           $00a0   663D 11664  11670  11795  11797
-ReverseFlag                    $009f   659D  9202   9415   9563   9664
+ReverseFlag                    $009f   659D  9200   9415   9563   9664
 CBINV                          $0092   594D  9726  13588  13590  13658
 RNDX                           $0088   569D  6824   6825   6848   6849
 BITS                           $0065   520D  4827   4833   4834   6130

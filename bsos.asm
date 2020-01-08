@@ -14,7 +14,7 @@
 
 BSOS_KBD = 1
 
-; revision 1.11 04-Jan-2020
+; revision 1.11 08-Jan-2020
 ; -------------------------
 ; enhance DELETE commnd
 ; implement OLD command
@@ -656,7 +656,7 @@ CharsInBuffer = $9e ; number of keys buffered
 
 ; Flag indicating reverse mode for screen output
 
-ReverseFlag  = $9f  ; 0 = normal   $80 = reverse
+ReverseFlag  = $9f  ; 0 = normal   non zero = reverse
 
 ; IEEE-488 output: deferred character flag
 
@@ -821,7 +821,7 @@ Mon_ZP     = $cc      ; Monitor ZP flag
 ; may be exited by printing a closing quote or by hitting the RETURN or
 ; SHIFT-RETURN or ESC keys.
 
-QTSW   = $cd        ; quote switch
+QTSW   = $cd        ; quote switch non zero:inside quotes
 
 BITTS  = $ce        ; unused (transmitter byte buffer)
 EOT    = $cf        ; unused (end of tape)
@@ -9156,7 +9156,7 @@ ECS_05    STA DATAX           ; save it in DATAX
           AND #$3f            ; lower case, symbols and digits
           ASL DATAX           ; reverse bit 7 -> carry
           BIT DATAX           ; uppercase or graphics ?
-          BPL ECS_10          ; branch if no´t
+          BPL ECS_10          ; branch if not
           ORA #$80            ; convert upper case to PETSCII
 ECS_10    BCC ECS_20          ; branch if not reversed
           LDX QTSW            ; quote mode ?
@@ -9166,17 +9166,15 @@ ECS_20    BVS ECS_30          ; no conversion for graphics
 ECS_30    INC CursorCol       ; advance cursor
           JSR Edit_Quote_Toggle
           CPY LastInputCol    ; at end of input ?
-          BCC ECS_70          ; return if not
+          BCC ECS_50          ; return if not
 ECS_40    LDA #0
           STA CRSW            ; switch input to keyboard
           LDA #CR             ; load CR
           LDX #3              ; screen channel
-          CPX DFLTN           ; input = screen ?
-          BEQ ECS_50          ; peform CR on screen input
           CPX DFLTO           ; output = screen ?
-          BEQ ECS_70          ; don't echo CR
-ECS_50    JSR EDIT_CHROUT
-ECS_70    STA DATAX           ; save character in DATAX
+          BEQ ECS_50          ; don't echo CR
+          JSR EDIT_CHROUT
+ECS_50    STA DATAX           ; save character in DATAX
           PLA
           TAX                 ; restore X
           PLA
@@ -9199,8 +9197,10 @@ EQT_Ret   RTS
   Edit_Display_Char
 ; *****************
 
-          ORA ReverseFlag  ;  3
-          LDX INSRT        ;  3  ; # of inserts outstanding
+          LDX ReverseFlag
+          BEQ EDC_10
+          ORA #$80
+EDC_10    LDX INSRT        ;  3  ; # of inserts outstanding
           BEQ EDC_20       ;  3
           DEC INSRT
 EDC_20    STA (ScrPtr),Y   ;  6
@@ -9270,8 +9270,8 @@ EETE_10   STA (ScrPtr),Y
 ; ****************
 
           LDA #0
-          TAX
-          JSR EDIT_TOP_LEFT
+          STA TopMargin
+          STA LefMargin
           LDA ScreenRows      ; bottom margin
           LDX #79             ; right  margin
 
