@@ -49,7 +49,7 @@ BSOS_KBD = 1
 ; Detect and activate option ROM's
 ; Detect and run "BSOS BOOT" during boot
 ; Non desctructive RAM test
-; Optimization of TIM LOAD/SAVE
+; Optimization of BSM LOAD/SAVE
 
 ; revision 1.03 29-Dec-2014
 ; -------------------------
@@ -73,9 +73,9 @@ BSOS_KBD = 1
 
 ; The operating system and BASIC interpreter is stored on two chips:
 
-; The editor is stored on a 2332 (4KB) ROM (or 2532 EPROM) for the address
-; range $E000 - $EFFF. The addresses $E800 - $E8FF are reserved for
-; I/O and are not accessible
+; The editor is stored on a 2332 (4KB) ROM (or 2532 EPROM) for the
+; address range $E000 - $EFFF. The range $E800 - $E8FF is reserved
+; for I/O and is not accessible
 
 ; The remaining code is stored on a 23128 (16KB) ROM (or 27128 EPROM):
 ; The address ranges are: $C000 $D000 $B000 $F000
@@ -91,12 +91,12 @@ BSOS_KBD = 1
 ; DOS parameter parser accepts 0-9 for drive value (original 0-1)
 ; This allows BASIC4 to work with all 10 possible drives of petSD
 
-; The TIM memory display and modifier uses 16 bytes per line
+; The BSM memory display and modifier uses 16 bytes per line
 
 ; DELETED FEATURES
 ; ================
 
-; All tape related code is removed in order to make room for improvements
+; All tape related code is removed
 ; The entry of diacritic characters is removed (accented letters etc.)
 
 ; NEW FEATURES
@@ -119,7 +119,7 @@ BSOS_KBD = 1
 ; It is is not possible to give a different name for the target file,
 ; use the RENAME command if necessary
 
-; The machine language monitor TIM can now display memory from other banks.
+; The machine language monitor BSM can now display memory from other banks.
 ; The new command ".b" (set Bank) stores a byte for the bank register.
 ; This affects the memory display for the asddress range $8000 - $ffff.
 ; Common values for the bank register are:
@@ -128,7 +128,7 @@ BSOS_KBD = 1
 ; .b 80    ; RAM bank 0/2 in $8000 - $ffff
 ; .b 8c    ; RAM bank 1/3 in $8000 - $ffff
 
-; TIM includes a disassembler:
+; BSM includes a disassembler:
 
 ; .d f5c2 f5ef     disassemble the given range
 ; .d f5c2          disassemble 10 statements starting with $f5c2
@@ -137,10 +137,10 @@ BSOS_KBD = 1
 ; EDITING
 ; =======
 
-; The editor scrolls the BASIC listing upwards or downwards if the cursor
-; is moved up on the top line or down on the bottom line
+; The editor scrolls the BASIC listing upwards or downwards if the
+; cursor is moved up on the top line or down on the bottom line
 ; The idea (not the code) is taken from Brad Templeton's POWER ROM
-; The character set is expanded with the missing ASCII characters {|} and ~ 
+; The character set is expanded with the missing ASCII characters {|}~ 
 ; These can be used by pressing the CONTROL key together with:
 ; CONTROL 7/      |
 ; CONTROL 8(      {
@@ -149,11 +149,11 @@ BSOS_KBD = 1
 
 ; LOAD, SAVE and VERIFY use now unit 8 as default device
 
-; LOAD "filename",8,0  discards the load address and loads the file to $0401
-; this enables the loading of C64 and other BASIC programs, which use different
-; start addresses for BASIC programs.
+; LOAD "filename",8,0 forces the file to load to $0401
+; this enables the loading of C64 and other BASIC programs, which use
+; different start addresses for BASIC programs.
 
-; The Commodore Disk-Wedge is integrated, loosely based on Nils Eilers' code.
+; The Disk-Wedge is integrated, loosely based on Nils Eilers' code.
 
 ; @                          read drive status
 ; @command                   send dos command
@@ -173,7 +173,7 @@ BSOS_KBD = 1
 ; FIND "text"          ; lists all lines with strings containing <text>
 ; FIND /text/          ; lists all lines with BASIC   containing <text>
 ;                      ; any character may be used as delimiter
-; MONITOR              ; Calls TIM instead of breaking to it with SYS 1024
+; MONITOR              ; Calls BSM
 ; RENUMBER new,inc,old ; Renumbers a BASIC program
 ;    The default values for new,inc,old are: 10,10,first line
 ;    RENUMBER 1000,10  renumbers the whole program to linenumbers
@@ -267,7 +267,7 @@ DIMFLG    = $06               ; DIM flag
 ; string or numeric. A value of $FF in this location indicates string
 ; data while a $00 indicates numeric data.
 
-VALTYP    = $07               ; data type flag, $FF = string, $00 = numeric
+VALTYP    = $07               ; data type, $FF = string, $00 = numeric
 
 ; If the above flag indicates numeric then a $80 in this location
 ; identifies the number as an integer, and a $00 indicates a floating
@@ -368,7 +368,7 @@ FAC3M4 = $26        ; mantissa byte 4 LSB
 
 FAC3M5 = $27        ; unused
 
-; FAC3 addresses shared with RENUMBER as start value for new line numbers
+; FAC3 addresses shared with RENUMBER as start value for line numbers
 
 RENNEW = $23        ; RENUMBER new line number start
 
@@ -589,7 +589,7 @@ CINV   = $90        ; IRQ vector (IRQ_NORMAL)
 ; The break routine is called after executing the BRK ($00) command
 ; either by intention or accidentally due to an error.
 ; It is initialized to MONITOR_BREAK ($d467), which saves the contents
-; of all registers and starts TIM, the tiny machine language monitor.
+; of all registers and starts BSM, the Bit Shifter Monitor.
 
 CBINV  = $92        ; BRK vector (MONITOR_BREAK)
 
@@ -667,13 +667,13 @@ InputRow     = $a3  ; store screen input row number (0-24)
 InputCol     = $a4  ; store screen input column (0-79)
 
 ; The IEEE-488 output routine CIOUT delays the output by one character,
-; which is stored in BSOUR. CIOUT checks on each call first, if a character
+; which is stored in BSOUR. CIOUT checks on each call, if a character
 ; is stored in BSOUR for transmisson, by testing the flag C3PO.
 ; If C3PO is negative, the character in BSOUR is sent and the actual
 ; character is stored in BSOUR. If BSOUR is empty (C3PO == 0), the only
-; action is storing the actual character in BSOUR and setting C3PO negative.
-; The delay in sending makes it possible  to send the EOI (End Of Information)
-; along with the last character to transmit.
+; action is storing the actual character in BSOUR and making C3PO
+; negative. The delay in sending makes it possible  to send the
+; EOI (End Of Information) along with the last character to transmit.
 
 BSOUR  = $a5        ; IEEE-488  output: deferred character (buffer)
 
@@ -772,10 +772,10 @@ DOS_FC     = $b1     ; used for DOS_Copy
 DOS_EOF    = $b2     ; used for DOS_Copy
 PC_Adjust  = $b3     ; used in monitor
 SCROLLING  = $b4     ; unused
-MONCNT     = $b5     ; TIM counter variable
+MONCNT     = $b5     ; BSM counter variable
 
-; Theses variables are used to store the value for the bank switching register
-; while performing the RENUMBER command.
+; Theses variables are used to store the value for the bank switching
+; register while performing the RENUMBER command.
 
 R_Bank     = $b6     ; Read  Bank value for bank switching
 W_Bank     = $b7     ; Write Bank value for bank switching
@@ -798,7 +798,7 @@ ScrPtr     = $c4      ; screen pointer ($8000 - $87cf)
 CursorCol  = $c6      ; cursor column (0 - 79)
 
 SAL        = $c7      ; used for windows scrolling
-EAL        = $c9      ; used for LOAD, SAVE and TIM
+EAL        = $c9      ; used for LOAD, SAVE and BSM
 
 Mon_Tmp    = $cb      ; Monitor temporary
 Mon_ZP     = $cc      ; Monitor ZP flag
@@ -827,7 +827,7 @@ BITTS  = $ce        ; unused (transmitter byte buffer)
 EOT    = $cf        ; unused (end of tape)
 ZD0    = $d0        ; unused
 
-FNLEN  = $d1        ; Length of filename - for file open and DOS commands
+FNLEN  = $d1        ; Length of filename - for file open and DOS
 LA     = $d2        ; Local     Address
 SA     = $d3        ; Secondary Address
 FA     = $d4        ; First     Address
@@ -854,20 +854,32 @@ CHIME      = $e7    ; chime counter
 ; this is used to identify the seuence <HOME><HOME>, which resets
 ; the window to full screen
 
-PrevChar   = $e8
+PrevChar   = $e8    ; used for key press repetion
+SCRIV      = $e9    ; EDIT_CHRIN vector
+SCROV      = $eb    ; EDIT_CHROUT vector
+JIFFY6     = $f8    ; 50Hz jiffy clock compensation counter
+BPTR       = $f9    ; multi purpose
+STAL       = $fb    ; start address
+MEMUSS     = $fd    ; end   address
 
-SCRIV = $00e9
-SCROV = $00eb
-JIFFY6 = $00f8
-BPTR = $00f9
-STAL = $00fb
-MEMUSS = $00fd
-STACK = $0100
-BUF = $0200
-LAT = $0251
-FAT = $025b
-SAT = $0265
-KEYD = $026f
+; the bottom of the stack is used from the BASIC formatting routine
+; which converts numbers to strings.
+; The 4 top addresses $01fc-$01ff are used by the BASIC tokenizer
+; for storing link and line number of an entered BASIC line,
+; so the usable stack range is limited to $0110 - $01fb.
+; BASIC initializes the stack pointer to $fa
+
+STACK      = $0100
+
+; The input buffer accepts input lines with a maximum of 80 characters
+; It is also used as workspace for the BASIC tokenizer.
+
+BUF        = $0200
+
+LAT        = $0251  ; Logical Address Table
+FAT        = $025b  ; First   Address Table (unit / device)
+SAT        = $0265  ; Second  Address Table
+KEYD       = $026f  ; keyboard buffer (10 byte)
 
 ; Commodore BASIC 4 used the area $027a - $0339
 ; as buffer for tape operations (TAPE1 buffer)
@@ -914,9 +926,10 @@ DOS_Command_Length = $0341
 DOS_Filename       = $0342
 DOS_Command_Buffer = $0353
 DOS_Status         = $03ad
-TABS_SET           = $03ee
-Reset_Vector       = $03fa
+TABS_SET           = $03ee    ; 80 bits TAB table
+Reset_Vector       = $03fa    ; set but unused
 Ignore_Timeout     = $03fc
+
 SCREEN_RAM         = $8000
 
 ; *****************************
