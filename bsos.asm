@@ -14,6 +14,10 @@
 
 BSOS_KBD = 1
 
+; revision 1.12 10-Jan-2020
+; -------------------------
+; implement vector table for extension interception
+
 ; revision 1.11 08-Jan-2020
 ; -------------------------
 ; enhance DELETE commnd
@@ -178,6 +182,17 @@ BSOS_KBD = 1
 ;    The default values for new,inc,old are: 10,10,first line
 ;    RENUMBER 1000,10  renumbers the whole program to linenumbers
 ;       1000,1010,1020 etc.
+
+; BSOS uses a vector table for important functions like C64, C128.
+; This enables the interception for BASIC language extensions
+; The names and addresses are the same as in the C128 BASIC.
+
+  IERROR  = $0300     ; DEF_ERROR   BASIC error handler
+  IMAIN   = $0302     ; DEF_MAIN    BASIC main loop
+  ICRNCH  = $0304     ; DEF_CRUNCH  BASIC tokenizer
+  IQPLOP  = $0306     ; DEF_QPLOP   BASIC statement lister
+  IGONE   = $0308     ; DEF_GONE    BASIC interpret statement
+  IEVAL   = $030a     ; DEF_EVAL    BASIC evaluate expression
 
 ; **********************
 ; BASIC scalar variables
@@ -762,10 +777,10 @@ DFLTO  = $b0         ; output device number
 
                      ; number   device
                      ; ------   ------
-                     ;  0      keyboard
+                     ;  0      keyboard    - input only
                      ;  1      cassette #1 - disabled in BSOS
                      ;  2      cassette #2 - disabled in BSOS
-                     ;  3      screen
+                     ;  3      screen      - input / output
                      ;  4-31   IEEE-488 bus
 
 DOS_FC     = $b1     ; used for DOS_Copy
@@ -897,8 +912,16 @@ Dis_Buf        = $02b1
 Ass_Buf_Length = $02c0
 Ass_Buf        = $02c1
 Ass_Index      = $02d0
-Ass_Dollar     = $02d1
-Ass_Length     = $02d2
+
+; jump vector table for interception of BASIC routines
+; position and named like the C128 table
+
+IERROR  = $0300     ; DEF_ERROR   BASIC error handler
+IMAIN   = $0302     ; DEF_MAIN    BASIC main loop
+ICRNCH  = $0304     ; DEF_CRUNCH  BASIC tokenizer
+IQPLOP  = $0306     ; DEF_QPLOP   BASIC statement lister
+IGONE   = $0308     ; DEF_GONE    BASIC interpret statement
+IEVAL   = $030a     ; DEF_EVAL    BASIC evaluate expression
 
 ; The area $033a - $03c9 was the tape buffer 2 on BASIC 2
 ; BASIC 4 uses this area for variables and buffers related to the
@@ -1465,12 +1488,15 @@ CMA_Ret   RTS
 
 ; Input:  X = Offset from Msg_Start for message
 
-          LDA IOPMPT
-          BEQ Berr_10
+          JMP (IERROR)
+
+; *********
+  DEF_ERROR
+; *********
+
           JSR CLRCHN          ; close open channels
-          LDA #0
-          STA IOPMPT
-Berr_10   JSR Print_CR
+          STA IOPMPT          ; A = 0 from CLRCHN
+          JSR Print_CR
           JSR Print_Question_Mark
 Berr_20   LDA Msg_Start,X
           PHA
@@ -1488,6 +1514,8 @@ Berr_40   JSR Print_String
           BEQ Basic_Ready
           JSR Print_IN
 
+          .FILL $b3ff-* ($ea)
+
 ; ********************
   Basic_Ready ; $ b3ff
 ; ********************
@@ -1500,6 +1528,12 @@ Berr_40   JSR Print_String
   Get_Basic_Statement ; $b406
 ; ***************************
 
+          JMP (IMAIN)
+
+; ********
+  DEF_MAIN
+; ********
+
           JSR Read_Power_String
           STX TXTPTR
           STY TXTPTR+1
@@ -1509,9 +1543,7 @@ Berr_40   JSR Print_String
           LDX #$ff
           STX CURLIN+1        ; invalidate CURLIN
           BCC New_Basic_Line  ; started with a line number
-;         JSR Tokenize_Line   ; else direct mode (HOOK FOR WEDGE)
-          JMP Wedge_Parser
-          JMP Start_Program   ; execute direct mode
+          JMP Wedge_Parser    ; direct command
 
 ; **********************
   New_Basic_Line ; $b41f
@@ -1653,6 +1685,12 @@ ReaS_20   JMP Terminate_BUF
 ; *********************
   Tokenize_Line ; $b4fb
 ; *********************
+
+          JMP (ICRNCH)
+
+; **********
+  DEF_CRUNCH
+; **********
 
           LDX TXTPTR
           LDY #4
@@ -1938,9 +1976,9 @@ LIST_50   JMP Basic_Ready     ; LIST finished
 
           .SIZE
 
-; *********
-  List_Line
-; *********
+; *****************
+  List_Line ; $b689
+; *****************
 
           JSR Print_Integer_XA; print line #
           LDA #' '            ; print blank after line #
@@ -1964,6 +2002,12 @@ LiLi_10   INY
 LiLi_20   INY                 ; Y++
           LDA (TMPPTC),Y      ; next character
           BEQ LiLi_Ret
+          JMP (IQPLOP)        ; hook for extensions
+
+; *********
+  DEF_QPLOP
+; *********
+
           BPL LiLi_08         ; continue printing if not a token
           CMP #$ff            ; is it the special char PI ?
           BEQ LiLi_08         ; yes, print it
@@ -2016,7 +2060,7 @@ LiLi_Ret  RTS
 FOR_10    PLA                 ; remove return address
           PLA                 ; now there is space for 18 bytes
           JSR Check_Stack_Avail
-          JSR Next_Statement  ; search start of loop body
+          JSR Skip_To_EOS     ; search start of loop body
           CLC
           TYA                 ; Y = position of delimiter (0 or ':')
           ADC TXTPTR          ; loop body low
@@ -2089,13 +2133,15 @@ Exec_10   LDY #0
           BCC Start_Program
           INC TXTPTR+1
 
-          NOP
-          NOP
-          NOP
+; *************
+  Start_Program
+; *************
 
-; *********************
-  Start_Program ; $b77c
-; *********************
+          JMP (IGONE)
+
+; ********
+  DEF_GONE
+; ********
 
           JSR Any_Except_Pi   ; Pi must not start a statement
           JSR Interpret
@@ -2235,7 +2281,7 @@ GOSUB_10  JSR CHRGOT
 ; ******************
 
           JSR Scan_Linenumber ; read LINNUM
-          JSR End_Of_Line     ; skip to end of line
+          JSR Skip_To_EOL     ; skip to end of line
           LDA CURLIN+1
           CMP LINNUM+1        ; CURLIN >= LINNUM ?
           BCS GOTO_10         ; search from start
@@ -2288,7 +2334,7 @@ RET_30    PLA                 ; marker
   Basic_DATA ; $b883
 ; ******************
 
-          JSR Next_Statement
+          JSR Skip_To_EOS
 
 ; **********************************
   Add_Y_To_Execution_Pointer ; $b886
@@ -2302,15 +2348,15 @@ RET_30    PLA                 ; marker
           INC TXTPTR+1
 AYEP_Ret  RTS
 
-; **********************
-  Next_Statement ; $b891
-; **********************
+; *******************
+  Skip_To_EOS ; $b891
+; *******************
 
-          LDX #':'
+          LDX #':'            ; scan for ':' or zero
           .BYTE $2c
 
 ; *******************
-  End_Of_Line ; $b894
+  Skip_To_EOL ; $b894
 ; *******************
 
           LDX #0
@@ -2326,7 +2372,7 @@ NeSt_20   LDA (TXTPTR),Y
           CMP ENDCHR
           BEQ AYEP_Ret
           INY
-          CMP #QUOTE          ; Gaensefuesschen oben
+          CMP #QUOTE
           BNE NeSt_20
           BEQ NeSt_10
 
@@ -2347,7 +2393,7 @@ IF_10     LDA FAC1EX          ; IF clause != 0 (true) or 0 (false)
   Basic_REM ; $b8c6
 ; *****************
 
-          JSR End_Of_Line
+          JSR Skip_To_EOL
           BEQ Add_Y_To_Execution_Pointer
 REM_10    JSR CHRGOT
           BCS REM_20
@@ -3066,7 +3112,7 @@ READ_70   LDA TXTPTR
 
 ; READ from DATA statements
 
-READ_75   JSR Next_Statement
+READ_75   JSR Skip_To_EOS
           INY
           TAX
           BNE READ_80
@@ -3361,10 +3407,16 @@ PoFA_40   PLA
 PoFA_50   LDA FAC1EX
           RTS                 ; -> use operator
 
-          .FILL $be81-* (0)
+          .FILL $be7e-* (0)
 
 ; ****************
-  Evaluate ; $be81
+  Evaluate ; $be7e
+; ****************
+
+          JMP (IEVAL)
+
+; ****************
+  DEF_EVAL ; $be81
 ; ****************
 
           LDA #0
@@ -7067,6 +7119,7 @@ IBRV_30   LDA LINNUM+1
           STA MEMSIZ+1        ; top of RAM + 1
           STY FRETOP
           STA FRETOP+1
+          JSR Init_RAM_Vectors
           LDA #<Start_Message
           LDY #>Start_Message
           JSR Print_String
@@ -13255,8 +13308,6 @@ Ass_010   LDY #0               ; reset buffer pointer
           STY Mon_Op
           STY Mon_Lo
           STY Mon_Hi
-          STY Ass_Dollar
-          STY Ass_Length
 Ass_020   JSR Mon_CHRIN        ; get next char
           BEQ Ass_Err
           CMP #' '
@@ -13425,6 +13476,28 @@ MoDi_10   STA DOS_Filename,Y
           JSR Wedge_Call_Dir
           JMP Mon_Main
 
+; ****************
+  Init_RAM_Vectors
+; ****************
+
+          LDX #RBVT_END - ROM_BASIC_Vector_Table - 1
+IRV_10    LDA ROM_BASIC_Vector_Table,X
+          STA IERROR,X
+          DEX
+          BPL IRV_10
+          RTS
+
+; **********************
+  ROM_BASIC_Vector_Table
+; **********************
+
+          .WORD DEF_ERROR     ; $0300 IERROR
+          .WORD DEF_MAIN      ; $0302 IMAIN
+          .WORD DEF_CRUNCH    ; $0304 ICRNCH
+          .WORD DEF_QPLOP     ; $0306 IQPLOP
+          .WORD DEF_GONE      ; $0308 IGONE
+          .WORD DEF_EVAL      ; $030a IEVAL
+RBVT_END
           .FILL $fbc4 - * (0)
 
 ; **********
