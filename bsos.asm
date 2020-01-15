@@ -640,9 +640,10 @@ Key_Flags = $98
 
 ; The power flag activates power scrolling (continuous scrolling)
 ; when set. It is active in direct mode and inactive in run mode.
+; Bit 7 $80 activates BASIC editor scrolling
+; Bit 6 $40 activates Monitor scrolling
 
-Power_Flag = $99    ; $ff power scrolling on, $00 off
-
+Power_Flag = $99    ; $00 = power srolling off
 
 ; The default bank holds the configuration for the bank register $FFF0
 ; If the operating system runs from ROM its value is $00
@@ -7217,6 +7218,8 @@ MOBR_20   LDA #'R'
 ; ********
 
           JSR Mon_Print_CR
+          LDA #$40
+          STA Power_Flag      ; activate power scrolling
 Mon_10    JSR Mon_CHRIN
           BEQ Mon_Main
           CMP #' '
@@ -10489,10 +10492,10 @@ LoKe_30   LDA KEYBOARD_NORMAL,X
   Read_Power_String
 ; *****************
 
-          LDA #$ff
+          LDA #$80            ; activate power scrolling
           STA Power_Flag
           JSR Read_String
-          INC Power_Flag
+          ASL Power_Flag      ; deactivate power scrolling
           RTS
 
 ; ****************
@@ -10549,8 +10552,8 @@ CLD_Ret   RTS
   Power_Scroll_Up
 ; ***************
 
-          BIT Power_Flag      ; active ?
-          BPL PSU_Ret
+          LDA Power_Flag      ; active ?
+          BEQ PSU_Ret         ; -> neither BASIC nor monitor
           LDA CursorRow       ; save row
           PHA
           LDA CursorCol
@@ -10565,7 +10568,28 @@ PSU_10    CMP (ScrPtr),Y
           CPY RigMargin
           BCC PSU_10
           STX CursorRow
-          JSR Check_Line_Upwards
+          BIT Power_Flag
+          BMI PSU_15          ; -> BASIC MODE
+
+          DEX                 ; line above
+          JSR Cursor_BOL
+          LDA (ScrPtr),Y
+          CMP #':'            ; memory display
+          BNE PSU_30
+          DEC CursorRow
+          JSR Mon_Prompt
+          JSR Mon_Print_STAL
+          LDA #16
+          JSR Mon_Print_A_Hex_Values
+          LDA #16
+          JSR Add_STAL
+          LDA #0
+          STA QTSW
+          LDA #$40
+          STA Power_Flag      ; keep it active
+          JMP PSU_30
+
+PSU_15    JSR Check_Line_Upwards
           BCS PSU_30
           INC LINNUM
           BNE PSU_20
@@ -10576,7 +10600,7 @@ PSU_30    PLA
           STA CursorCol
           PLA
           STA CursorRow       ; restore row
-          JSR Edit_Use_CursorRow
+          JMP Edit_Use_CursorRow
 PSU_Ret   RTS
 
 ; *****************
