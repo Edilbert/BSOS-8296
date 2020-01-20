@@ -527,6 +527,9 @@ EXAMPLE:
 M B0B0 B0BF
 :B0B0 B5 C0 45 4E C4 46 4F D2  4E 45 58 D4 44 41 54 C1 5@ENDFOR NEXTDATA
 
+The memory dump is scrollable.
+Use Ctrl-A for scroll down and Ctrl-Y for scroll up
+Typing cursorup on top line or cursor down on bottom line will scroll too.
 
 
   *****
