@@ -7437,6 +7437,18 @@ DiRe_20   LDA #'0'
           SBC STAL+1
           RTS
 
+; ****************
+  Display_16_Bytes
+; ****************
+
+          LDA #':'
+          JSR Mon_Prompt
+Dis_16    JSR Mon_Print_STAL
+          LDA #16             ; dump 16 bytes per line
+          JSR Mon_Print_A_Hex_Values
+          LDA #16
+          JMP Add_STAL
+
 ; **************
   Display_Memory
 ; **************
@@ -7446,14 +7458,8 @@ DiMe_10   JSR Check_STOP_Key  ; STOP key pressed?
           BEQ To_Mon_Main
           JSR Mon_Cmp_Addr
           BCC To_Mon_Main     ; STAL > MEMUSS ?
-          LDA #':'
-          JSR Mon_Prompt
-          JSR Mon_Print_STAL
-          LDA #16             ; dump 16 bytes per line
-          JSR Mon_Print_A_Hex_Values
-          LDA #16
-          JSR Add_STAL
-          BNE DiMe_10
+          JSR Display_16_Bytes
+          BNE DiMe_10         ; always
 To_Mon_Main
           JMP Mon_Main
 
@@ -7711,7 +7717,7 @@ RHW_Ret   RTS
 
 ; read a two digit hex number, allow leading blanks
 
-          JSR Mon_CHRIN
+          JSR SCRIN
           CMP #' '
           BEQ Read_Hex
 Read_Hex_A
@@ -7723,14 +7729,13 @@ Read_Hex_A
           ASL A
           ASL A
           STA Mon_Tmp
-          JSR Mon_CHRIN
+          JSR SCRIN
           JSR Is_Hex
           BCC ReHe_Ret         ; error
           JSR Hex_To_Bin
           ORA Mon_Tmp
           SEC
 ReHe_Ret  RTS
-
 
           .FILL $d7af - * (0)
 
@@ -8131,6 +8136,19 @@ KDR_30    LDA #0
           STA DOS_Status,X
           JSR UNTLK
           LDA DOS_Status      ; load first character
+          RTS
+
+; *****
+  SCRIN
+; *****
+
+          LDY CursorCol
+          LDA (ScrPtr),Y
+          AND #$7f            ; clear reverse bit
+          CMP #$20
+          BCS SCRI_10
+          ORA #$40            ; display -> PET
+SCRI_10   INC CursorCol
           RTS
 
           .FILL $d9d2-* (0)
@@ -10226,6 +10244,44 @@ BEEP_Ret  RTS
           ADC #0
           JMP Renu_90         ; set VARTAB and reset BASIC
 
+; **************
+  Check_Mon_Line
+; **************
+
+          TXA
+          PHA
+          JSR Cursor_BOL
+          LDA (ScrPtr),Y
+          CMP #':'
+          BNE CML_10
+          INY
+          STY CursorCol
+          JSR Hex_To_STAL
+          CLC
+          BCC CML_20
+CML_10    SEC
+CML_20    PLA
+          TAX
+          RTS
+
+; **************
+  Check_Mon_Down
+; **************
+
+          LDX TopMargin
+CMDO_10   CPX BotMargin
+          BCS CMDO_Ret        ; not found: C=1
+          INX
+          JSR Check_Mon_Line
+          BCS CMDO_10
+          LDA STAL
+          SBC #15             ; C=1
+          STA STAL
+          BCS CMDO_20
+          DEC STAL+1
+CMDO_20   CLC                 ; found: C=0
+CMDO_Ret  RTS
+
           .FILL $e74e-* (0)
 
 ; ****************
@@ -10571,23 +10627,18 @@ PSU_10    CMP (ScrPtr),Y
           BIT Power_Flag
           BMI PSU_15          ; -> BASIC MODE
 
-          DEX                 ; line above
-          JSR Cursor_BOL
-          LDA (ScrPtr),Y
-          CMP #':'            ; memory display
-          BNE PSU_30
-          DEC CursorRow
-          JSR Mon_Prompt
-          JSR Mon_Print_STAL
-          LDA #16
-          JSR Mon_Print_A_Hex_Values
-          LDA #16
-          JSR Add_STAL
+          JSR Check_Mon_Up
+          BCS PSU_30
+          LDX BotMargin
+          DEX
+          DEX
+          STX CursorRow
+          JSR Display_16_Bytes
           LDA #0
           STA QTSW
           LDA #$40
           STA Power_Flag      ; keep it active
-          JMP PSU_30
+          BNE PSU_30          ; always
 
 PSU_15    JSR Check_Line_Upwards
           BCS PSU_30
@@ -10607,13 +10658,28 @@ PSU_Ret   RTS
   Power_Scroll_Down
 ; *****************
 
-          BIT Power_Flag
-          BPL PSU_Ret
+          LDA Power_Flag
+          BEQ PSU_Ret         ; -> neither BASIC nor monitor
           LDA CursorRow       ; save row
           PHA
           LDA CursorCol
           PHA                 ; save col
-          JSR Check_Line_Downwards
+          BIT Power_Flag
+          BMI PSD_10          ;  -> BASIC MODE
+
+          JSR Check_Mon_Down
+          BCS PSU_30
+          JSR EDIT_HOME
+          LDA #':'
+          JSR EDIT_CHROUT
+          JSR Dis_16
+          LDA #$40
+          STA Power_Flag
+          LDA #0
+          STA QTSW
+          BEQ PSU_30
+
+PSD_10    JSR Check_Line_Downwards
           BCS PSU_30
           JSR Find_Power_Line
           LDA TMPPTC
@@ -11993,6 +12059,21 @@ KeIn_40   JMP ACPTR           ; continue at ACPTR
           BCS KeCH_10         ; branch if IEEE-488 device
           JMP EDIT_CHROUT     ; continue at display on screen
 KeCH_10   JMP CIOUT           ; continue on IEEE-488 output
+
+; ************
+  Check_Mon_Up
+; ************
+
+          LDX BotMargin
+CMDU_10   CPX TopMargin
+          BEQ CMDU_Ret        ; not found: C=1
+          DEX
+          JSR Check_Mon_Line
+          BCS CMDU_10
+          LDA #16
+          JSR Add_STAL
+          CLC
+CMDU_Ret  RTS
 
           .FILL $f2a2 - * (0)
 
@@ -13428,7 +13509,7 @@ Ass_090   LDA Mon_Op,Y        ; store instruction
 AdST_00   ADC STAL
           STA STAL
           BCC AdST_Ret
-AdST_10   INC STAL+1
+          INC STAL+1
 AdST_Ret  RTS
 
 
