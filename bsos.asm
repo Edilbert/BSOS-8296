@@ -10252,15 +10252,18 @@ BEEP_Ret  RTS
           PHA
           JSR Cursor_BOL
           LDA (ScrPtr),Y
-          CMP #':'
-          BNE CML_10
+          CMP #'.'            ; disassemble listing
+          BEQ CML_10
+          CMP #':'            ; memory dump
+          BNE CML_20
+CML_10    STA Mon_A           ; remember mode
           INY
           STY CursorCol
           JSR Hex_To_STAL
           CLC
-          BCC CML_20
-CML_10    SEC
-CML_20    PLA
+          BCC CML_30
+CML_20    SEC
+CML_30    PLA
           TAX
           RTS
 
@@ -10274,12 +10277,8 @@ CMDO_10   CPX BotMargin
           INX
           JSR Check_Mon_Line
           BCS CMDO_10
-          LDA STAL
-          SBC #15             ; C=1
-          STA STAL
-          BCS CMDO_20
-          DEC STAL+1
-CMDO_20   CLC                 ; found: C=0
+          JSR Sub_STAL_16
+          CLC                 ; found: C=0
 CMDO_Ret  RTS
 
           .FILL $e74e-* (0)
@@ -10633,7 +10632,7 @@ PSU_10    CMP (ScrPtr),Y
           DEX
           DEX
           STX CursorRow
-          JSR Display_16_Bytes
+          JSR Mon_Auto
           LDA #0
           STA QTSW
           LDA #$40
@@ -11766,6 +11765,17 @@ ORF_10    JMP Send_Filename
           STA (FNADR),Y
           JMP Send_Filename
 
+; ***********
+  Sub_STAL_16
+; ***********
+
+          SEC
+          LDA STAL
+          SBC #16
+          STA STAL
+          BCS SuST_Ret
+          DEC STAL+1
+SuST_Ret  RTS
 
           .FILL $f000 - * (0)
 
@@ -12071,7 +12081,12 @@ CMDU_10   CPX TopMargin
           JSR Check_Mon_Line
           BCS CMDU_10
           LDA #16
-          JSR Add_STAL
+          LDX Mon_A
+          CPX #':'            ; dump ?
+          BEQ CMDU_20
+          INC Dis_Length
+          LDA Dis_Length      ; disass
+CMDU_20   JSR Add_STAL
           CLC
 CMDU_Ret  RTS
 
@@ -12554,6 +12569,17 @@ Mf563     LDA LA
           JSR Display_Kernal_Message
           JMP Berr_30
 
+
+; *************
+  Disass_Single
+; *************
+
+          LDA #'.'
+          JSR Mon_Prompt
+          JSR Mon_Print_Blank
+          JSR Dis_Inst        ; Disassemble
+          JMP Print_Dis_Line
+
 ; ***********
   Disassemble
 ; ***********
@@ -12563,11 +12589,7 @@ Disa_10   JSR Check_STOP_Key  ; STOP key pressed?
           BEQ Disa_Main
           JSR Mon_Cmp_Addr
           BCC Disa_Main       ; STAL > MEMUSS ?
-Disa_15   LDA #'.'
-          JSR Mon_Prompt
-          JSR Mon_Print_Blank
-          JSR Dis_Inst        ; Disassemble
-          JSR Print_Dis_Line
+Disa_15   JSR Disass_Single
           LDA PC_Adjust
           BNE Disa_10
           INC PC_Adjust
@@ -12866,7 +12888,6 @@ PrMn_20   ASL Mon_B
           CPX #3
           BCC PrMn_10
           RTS
-
 
           .FILL $f768 - * (0)
 
@@ -13603,6 +13624,17 @@ IRV_10    LDA ROM_BASIC_Vector_Table,X
           .WORD DEF_GONE      ; $0308 IGONE
           .WORD DEF_EVAL      ; $030a IEVAL
 RBVT_END
+
+; ********
+  Mon_Auto
+; ********
+
+          LDX Mon_A
+          CPX #':'
+          BEQ MoAu_10
+          JMP Disass_Single
+MoAu_10   JMP Display_16_Bytes
+
           .FILL $fbc4 - * (0)
 
 ; **********
